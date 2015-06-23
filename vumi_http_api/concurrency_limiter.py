@@ -1,5 +1,6 @@
 from twisted.internet.defer import Deferred, succeed
 
+
 class ConcurrencyLimiterError(Exception):
     """
     Error raised by concurrency limiters.

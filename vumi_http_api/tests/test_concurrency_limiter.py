@@ -134,6 +134,6 @@ class TestConcurrencyLimitManager(VumiTestCase):
         ConcurrencyLimiter cannot have a negative concurrents
         """
         limiter = ConcurrencyLimitManager(1)
-        d = limiter.start('key')
+        limiter.start('key')
         limiter._concurrency_limiters['key']._concurrents = 0
         self.assertRaises(ConcurrencyLimiterError, limiter.stop, 'key')
