@@ -59,7 +59,7 @@ class VumiApiWorker(ApplicationWorker):
 
     @inlineCallbacks
     def push(self, url, vumi_message):
-        config = yield self.get_static_config()
+        config = yield self.get_config(vumi_message)
         data = vumi_message.to_json().encode('utf-8')
         try:
             auth, url = extract_auth_from_url(url.encode('utf-8'))
