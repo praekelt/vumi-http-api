@@ -20,10 +20,10 @@ class VumiApiWorkerConfig(ApplicationWorker.CONFIG_CLASS):
         "URL for messages to be send to")
     ignore_messages = ConfigBool(
         "If True, no messages will be sent to the push_message_url",
-        default=False, static=True)
+        default=False)
     timeout = ConfigInt(
         "How long to wait for a response from a server when posting "
-        "messages or events", default=5, static=True)
+        "messages or events", default=5)
 
 
 class VumiApiWorker(ApplicationWorker):
