@@ -1,10 +1,12 @@
 import base64
+import json
 import logging
 
 from twisted.internet.defer import inlineCallbacks, DeferredQueue
 from twisted.internet.error import DNSLookupError, ConnectionRefusedError
 from twisted.web.error import SchemeNotSupported
 from twisted.web.server import NOT_DONE_YET
+from twisted.web import http
 
 from urlparse import urlparse, urlunparse
 
@@ -12,7 +14,7 @@ from vumi.application.tests.helpers import ApplicationHelper
 from vumi.message import TransportEvent, TransportUserMessage
 from vumi.tests.helpers import VumiTestCase
 from vumi.tests.utils import LogCatcher, MockHttpServer
-from vumi.utils import HttpTimeoutError
+from vumi.utils import http_request_full, HttpTimeoutError
 
 from vumi_http_api import VumiApiWorker
 
@@ -36,10 +38,21 @@ class TestVumiApiWorkerBase(VumiTestCase):
             'conversation_key': 'key_conversation',
             'push_message_url': self.get_message_url(),
             'push_event_url': self.get_event_url(),
+            'health_path': '/health/',
+            'web_path': '/foo',
+            'web_port': 0,
+            'api_tokens': ['token-1', 'token-2', 'token-3'],
         }
         self.config.update(config_overrides)
         self.app = yield self.app_helper.get_application(self.config)
         self.conversation = self.config['conversation_key']
+        self.addr = self.app.webserver.getHost()
+        self.url = 'http://%s:%s%s' % (
+            self.addr.host, self.addr.port, self.config['web_path'])
+        self.auth_headers = {
+            'Authorization': ['Basic ' + base64.b64encode('%s:%s' % (
+                self.conversation, 'token-1'))],
+        }
 
     def get_message_url(self):
         return self.mock_push_server.url
@@ -51,8 +64,174 @@ class TestVumiApiWorkerBase(VumiTestCase):
         self.push_calls.put(request)
         return NOT_DONE_YET
 
+    def assert_bad_request(self, response, reason):
+        self.assertEqual(response.code, http.BAD_REQUEST)
+        self.assertEqual(
+            response.headers.getRawHeaders('content-type'),
+            ['application/json; charset=utf-8'])
+        data = json.loads(response.delivered_body)
+        self.assertEqual(data, {
+            "success": False,
+            "reason": reason,
+        })
+
 
 class TestVumiApiWorker(TestVumiApiWorkerBase):
+
+    @inlineCallbacks
+    def test_missing_auth(self):
+        yield self.start_app_worker()
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        msg = {
+            'to_addr': '+2345',
+            'content': 'foo',
+            'message_id': 'evil_id',
+        }
+        response = yield http_request_full(url, json.dumps(msg), {},
+                                           method='PUT')
+        self.assertEqual(response.code, http.UNAUTHORIZED)
+        self.assertEqual(response.headers.getRawHeaders('www-authenticate'), [
+            'basic realm="Conversation Realm"'])
+
+    @inlineCallbacks
+    def test_invalid_auth(self):
+        yield self.start_app_worker()
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        msg = {
+            'to_addr': '+2345',
+            'content': 'foo',
+            'message_id': 'evil_id',
+        }
+        auth_headers = {
+            'Authorization': ['Basic %s' % (base64.b64encode('foo:bar'),)],
+        }
+        response = yield http_request_full(url, json.dumps(msg), auth_headers,
+                                           method='PUT')
+        self.assertEqual(response.code, http.UNAUTHORIZED)
+        self.assertEqual(response.headers.getRawHeaders('www-authenticate'), [
+            'basic realm="Conversation Realm"'])
+
+    @inlineCallbacks
+    def test_send_to(self):
+        yield self.start_app_worker()
+        msg = {
+            'to_addr': '+2345',
+            'content': 'foo',
+            'message_id': 'evil_id',
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(url, json.dumps(msg),
+                                           self.auth_headers, method='PUT')
+
+        self.assertEqual(response.code, http.OK)
+        self.assertEqual(
+            response.headers.getRawHeaders('content-type'),
+            ['application/json; charset=utf-8'])
+        put_msg = json.loads(response.delivered_body)
+
+        [sent_msg] = self.app_helper.get_dispatched_outbound()
+        self.assertEqual(sent_msg['to_addr'], sent_msg['to_addr'])
+        # We do not respect the message_id that's been given.
+        self.assertNotEqual(sent_msg['message_id'], msg['message_id'])
+        self.assertEqual(sent_msg['message_id'], put_msg['message_id'])
+        self.assertEqual(sent_msg['to_addr'], msg['to_addr'])
+        self.assertEqual(sent_msg['from_addr'], None)
+
+    @inlineCallbacks
+    def test_send_to_with_zero_worker_concurrency(self):
+        """
+        When the worker_concurrency_limit is set to zero, our requests will
+        never complete.
+
+        This is a hacky way to test that the concurrency limit is being applied
+        without invasive changes to the app worker.
+        """
+        yield self.start_app_worker({'worker_concurrency_limit': 0})
+        msg = {
+            'to_addr': '+2345',
+            'content': 'foo',
+            'message_id': 'evil_id',
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        d = http_request_full(
+            url, json.dumps(msg), self.auth_headers, method='PUT',
+            timeout=0.2)
+
+        yield self.assertFailure(d, HttpTimeoutError)
+
+    @inlineCallbacks
+    def test_send_to_within_content_length_limit(self):
+        yield self.start_app_worker({
+            'content_length_limit': 182,
+        })
+
+        msg = {
+            'content': 'foo',
+            'to_addr': '+1234',
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(url, json.dumps(msg),
+                                           self.auth_headers, method='PUT')
+        self.assertEqual(
+            response.headers.getRawHeaders('content-type'),
+            ['application/json; charset=utf-8'])
+        put_msg = json.loads(response.delivered_body)
+        self.assertEqual(response.code, http.OK)
+
+        [sent_msg] = self.app_helper.get_dispatched_outbound()
+        self.assertEqual(sent_msg['to_addr'], put_msg['to_addr'])
+        self.assertEqual(sent_msg['message_id'], put_msg['message_id'])
+        self.assertEqual(sent_msg['session_event'], None)
+        self.assertEqual(sent_msg['to_addr'], '+1234')
+        self.assertEqual(sent_msg['from_addr'], None)
+
+    @inlineCallbacks
+    def test_send_to_content_too_long(self):
+        yield self.start_app_worker({
+            'content_length_limit': 10,
+        })
+
+        msg = {
+            'content': "This message is longer than 10 characters.",
+            'to_addr': '+1234',
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(
+            url, json.dumps(msg), self.auth_headers, method='PUT')
+        self.assert_bad_request(
+            response, "Payload content too long: 42 > 10")
+
+    @inlineCallbacks
+    def test_send_to_with_evil_content(self):
+        yield self.start_app_worker()
+        msg = {
+            'content': 0xBAD,
+            'to_addr': '+1234',
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(url, json.dumps(msg),
+                                           self.auth_headers, method='PUT')
+        self.assert_bad_request(
+            response, "Invalid or missing value for payload key 'content'")
+
+    @inlineCallbacks
+    def test_send_to_with_evil_to_addr(self):
+        yield self.start_app_worker()
+        msg = {
+            'content': 'good',
+            'to_addr': 1234,
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(url, json.dumps(msg),
+                                           self.auth_headers, method='PUT')
+        self.assert_bad_request(
+            response, "Invalid or missing value for payload key 'to_addr'")
 
     @inlineCallbacks
     def test_post_inbound_message(self):
