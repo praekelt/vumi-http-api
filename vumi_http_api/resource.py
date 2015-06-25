@@ -160,9 +160,6 @@ class MessageResource(BaseResource):
             return {'load_balancer': copy.deepcopy(load_balancer)}
         return {}
 
-    def get_conversation_tag(self, conversation):
-        return (conversation.delivery_tag_pool, conversation.delivery_tag)
-
     @inlineCallbacks
     def handle_PUT(self, request):
         try:
@@ -176,40 +173,9 @@ class MessageResource(BaseResource):
         d = self.worker.concurrency_limiter.start(user_account)
         try:
             yield d  # Wait for our concurrency limiter to let us move on.
-            if in_reply_to:
-                yield self.handle_PUT_in_reply_to(
-                    request, payload, in_reply_to)
-            else:
-                yield self.handle_PUT_send_to(request, payload)
+            yield self.handle_PUT_send_to(request, payload)
         finally:
             self.worker.concurrency_limiter.stop(user_account)
-
-    @inlineCallbacks
-    def handle_PUT_in_reply_to(self, request, payload, in_reply_to):
-        user_account = request.getUser()
-        conversation = yield self.get_conversation(user_account)
-
-        reply_to = yield self.vumi_api.mdb.get_inbound_message(in_reply_to)
-        if reply_to is None:
-            self.client_error_response(request, 'Invalid in_reply_to value')
-            return
-
-        msg_options = ReplyToOptions(
-            payload, self.worker.get_all_api_config(conversation))
-        if not msg_options.is_valid:
-            self.client_error_response(request, msg_options.error_msg)
-            return
-
-        continue_session = (msg_options.session_event
-                            != TransportUserMessage.SESSION_CLOSE)
-        helper_metadata = conversation.set_go_helper_metadata()
-        helper_metadata.update(self.get_load_balancer_metadata(payload))
-
-        msg = yield self.worker.reply_to(
-            reply_to, msg_options.content, continue_session,
-            helper_metadata=helper_metadata)
-
-        self.successful_send_response(request, msg)
 
     @inlineCallbacks
     def handle_PUT_send_to(self, request, payload):
