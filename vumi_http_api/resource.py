@@ -30,13 +30,6 @@ class BaseResource(resource.Resource):
         })
         self.finish_response(request, msg, code=code, status=reason)
 
-    def success_response(self, request, reason, code=http.OK):
-        msg = json.dumps({
-            "success": True,
-            "reason": reason,
-        })
-        self.finish_response(request, msg, code=code, status=reason)
-
     def successful_send_response(self, request, msg, code=http.OK):
         self.finish_response(request, msg.to_json(), code=code)
 
@@ -145,20 +138,6 @@ class MessageResource(BaseResource):
         d.addCallback(self.handle_PUT)
         d.callback(request)
         return NOT_DONE_YET
-
-    def get_load_balancer_metadata(self, payload):
-        """
-        Probe for load_balancer config in the helper metadata
-        and return it.
-
-        TODO: Replace with a more generic mechanism for filtering
-        helper_metadata. See Go issue #659.
-        """
-        helper_metadata = payload.get('helper_metadata', {})
-        load_balancer = helper_metadata.get('load_balancer')
-        if load_balancer is not None:
-            return {'load_balancer': copy.deepcopy(load_balancer)}
-        return {}
 
     @inlineCallbacks
     def handle_PUT(self, request):

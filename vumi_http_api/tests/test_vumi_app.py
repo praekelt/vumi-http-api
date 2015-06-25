@@ -598,3 +598,21 @@ class TestVumiApiWorkerWithAuth(TestVumiApiWorkerBase):
         yield assert_not_found('%s/%s/foo' % (self.url, self.conversation),
                                headers=self.auth_headers)
 
+    @inlineCallbacks
+    def test_concurrency_limit(self):
+        yield self.start_app_worker({
+            'concurrency_limit': 0,
+        })
+        msg = {
+            'to_addr': '+2345',
+            'content': 'foo',
+            'message_id': 'evil_id',
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(url, json.dumps(msg),
+                                           self.auth_headers, method='PUT')
+
+        self.assertEqual(response.code, http.FORBIDDEN)
+        self.assertTrue(
+            "Too many concurrent connections" in response.delivered_body)
