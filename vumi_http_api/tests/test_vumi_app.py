@@ -583,7 +583,7 @@ class TestVumiApiWorkerWithAuth(TestVumiApiWorkerBase):
     @inlineCallbacks
     def test_bad_urls(self):
         def assert_not_found(url, headers={}):
-            d = http_request_full(self.url, method='GET', headers=headers)
+            d = http_request_full(url, method='GET', headers=headers)
             d.addCallback(lambda r: self.assertEqual(r.code, http.NOT_FOUND))
             return d
 
@@ -597,6 +597,7 @@ class TestVumiApiWorkerWithAuth(TestVumiApiWorkerBase):
                                headers=self.auth_headers)
         yield assert_not_found('%s/%s/foo' % (self.url, self.conversation),
                                headers=self.auth_headers)
+
 
     @inlineCallbacks
     def test_concurrency_limit(self):
@@ -616,3 +617,20 @@ class TestVumiApiWorkerWithAuth(TestVumiApiWorkerBase):
         self.assertEqual(response.code, http.FORBIDDEN)
         self.assertTrue(
             "Too many concurrent connections" in response.delivered_body)
+
+    @inlineCallbacks
+    def test_no_concurrency_limit(self):
+        yield self.start_app_worker({
+            'concurrency_limit': -1,
+        })
+        msg = {
+            'to_addr': '+2345',
+            'content': 'foo',
+            'message_id': 'evil_id',
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(url, json.dumps(msg),
+                                           self.auth_headers, method='PUT')
+
+        self.assertEqual(response.code, http.OK)
