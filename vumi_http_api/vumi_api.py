@@ -18,8 +18,13 @@ class VumiApiWorkerConfig(ApplicationWorker.CONFIG_CLASS):
         "Conversation key for the current conversation")
     push_message_url = ConfigText(
         "URL for messages to be send to")
+    push_event_url = ConfigText(
+        "URL for events to be send to")
     ignore_messages = ConfigBool(
         "If True, no messages will be sent to the push_message_url",
+        default=False)
+    ignore_events = ConfigBool(
+        "If True, no events will be sent to the push_message_url",
         default=False)
     timeout = ConfigInt(
         "How long to wait for a response from a server when posting "
@@ -91,9 +96,22 @@ class VumiApiWorker(ApplicationWorker):
         except ConnectionRefusedError:
             log.warning("Connection refused pushing message to %s" % (url,))
 
+    @inlineCallbacks
     def consume_event(self, event):
-        # TODO: Event handling
-        pass
+        config = yield self.get_config(event)
+        conversation = config.conversation_key
+        ignore = config.ignore_events
+        if not ignore:
+            push_url = config.push_event_url
+            yield self.send_event_to_client(event, conversation, push_url)
+
+    def send_event_to_client(self, event, conversation, push_url):
+        if push_url is None:
+            log.info(
+                "push_event_url not configured for conversation: %s" % (
+                    conversation))
+            return
+        return self.push(push_url, event)
 
     def consume_ack(self, event):
         return self.consume_event(event)
