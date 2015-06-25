@@ -175,3 +175,6 @@ class VumiApiWorker(ApplicationWorker):
 
     def consume_unknown_event(self, event):
         return self.consume_event(event)
+
+    def get_health_response(self):
+        return "OK"

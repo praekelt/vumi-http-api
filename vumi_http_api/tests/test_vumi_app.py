@@ -234,6 +234,15 @@ class TestVumiApiWorker(TestVumiApiWorkerBase):
             response, "Invalid or missing value for payload key 'to_addr'")
 
     @inlineCallbacks
+    def test_health_response(self):
+        yield self.start_app_worker()
+        health_url = 'http://%s:%s%s' % (
+            self.addr.host, self.addr.port, self.config['health_path'])
+
+        response = yield http_request_full(health_url, method='GET')
+        self.assertEqual(response.delivered_body, 'OK')
+
+    @inlineCallbacks
     def test_post_inbound_message(self):
         yield self.start_app_worker()
         msg_d = self.app_helper.make_dispatch_inbound(
@@ -366,6 +375,9 @@ class TestVumiApiWorker(TestVumiApiWorkerBase):
 
     def make_outbound(self, conv, content, **kw):
         return self.app_helper.make_outbound(content, conv=conv, **kw)
+
+    def make_inbound(self, conv, content, **kw):
+        return self.app_helper.make_inbound(content, conv=conv, **kw)
 
     @inlineCallbacks
     def test_post_ack_event(self):
@@ -567,3 +579,22 @@ class TestVumiApiWorkerWithAuth(TestVumiApiWorkerBase):
         [header] = req.requestHeaders.getRawHeaders('Authorization')
         self.assertEqual(
             header, 'Basic %s' % (base64.b64encode('username:')))
+
+    @inlineCallbacks
+    def test_bad_urls(self):
+        def assert_not_found(url, headers={}):
+            d = http_request_full(self.url, method='GET', headers=headers)
+            d.addCallback(lambda r: self.assertEqual(r.code, http.NOT_FOUND))
+            return d
+
+        yield self.start_app_worker()
+
+        yield assert_not_found(self.url)
+        yield assert_not_found(self.url + '/')
+        yield assert_not_found('%s/%s' % (self.url, self.conversation),
+                               headers=self.auth_headers)
+        yield assert_not_found('%s/%s/' % (self.url, self.conversation),
+                               headers=self.auth_headers)
+        yield assert_not_found('%s/%s/foo' % (self.url, self.conversation),
+                               headers=self.auth_headers)
+
