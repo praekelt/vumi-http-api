@@ -376,9 +376,6 @@ class TestVumiApiWorker(TestVumiApiWorkerBase):
     def make_outbound(self, conv, content, **kw):
         return self.app_helper.make_outbound(content, conv=conv, **kw)
 
-    def make_inbound(self, conv, content, **kw):
-        return self.app_helper.make_inbound(content, conv=conv, **kw)
-
     @inlineCallbacks
     def test_post_ack_event(self):
         yield self.start_app_worker()
@@ -634,3 +631,17 @@ class TestVumiApiWorkerWithAuth(TestVumiApiWorkerBase):
                                            self.auth_headers, method='PUT')
 
         self.assertEqual(response.code, http.OK)
+
+    @inlineCallbacks
+    def test_put_bad_json(self):
+        yield self.start_app_worker()
+        msg = '{'
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(
+            url, msg, self.auth_headers, method='PUT')
+
+        self.assertEqual(response.code, http.BAD_REQUEST)
+        resp = json.loads(response.delivered_body)
+        self.assertEqual(resp['reason'], 'Invalid Message')
+        self.assertEqual(resp['success'], False)
