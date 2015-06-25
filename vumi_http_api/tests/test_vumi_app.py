@@ -217,8 +217,8 @@ class TestVumiApiWorker(TestVumiApiWorkerBase):
             req.requestHeaders.getRawHeaders('content-type'),
             ['application/json; charset=utf-8'])
         req.finish()
-        ack1 = yield event_d
-        self.assertEqual(TransportEvent.from_json(posted_json_data), ack1)
+        nack1 = yield event_d
+        self.assertEqual(TransportEvent.from_json(posted_json_data), nack1)
 
     @inlineCallbacks
     def test_post_unknown_event(self):
@@ -251,8 +251,8 @@ class TestVumiApiWorker(TestVumiApiWorkerBase):
             req.requestHeaders.getRawHeaders('content-type'),
             ['application/json; charset=utf-8'])
         req.finish()
-        ack1 = yield event_d
-        self.assertEqual(TransportEvent.from_json(posted_json_data), ack1)
+        dr1 = yield event_d
+        self.assertEqual(TransportEvent.from_json(posted_json_data), dr1)
 
     @inlineCallbacks
     def test_post_inbound_event(self):
