@@ -260,6 +260,46 @@ class TestVumiApiWorker(TestVumiApiWorkerBase):
         self.assertEqual(posted_msg['message_id'], msg['message_id'])
 
     @inlineCallbacks
+    def test_post_inbound_message_new_session(self):
+        yield self.start_app_worker()
+        msg_d = self.app_helper.make_dispatch_inbound(
+            'in 1', message_id='1', conv=self.conversation,
+            session_event=TransportUserMessage.SESSION_NEW)
+
+        req = yield self.push_calls.get()
+        posted_json = req.content.read()
+        self.assertEqual(
+            req.requestHeaders.getRawHeaders('content-type'),
+            ['application/json; charset=utf-8'])
+        req.finish()
+        msg = yield msg_d
+
+        posted_msg = TransportUserMessage.from_json(posted_json)
+        self.assertEqual(posted_msg['message_id'], msg['message_id'])
+        self.assertEqual(
+            posted_msg['session_event'], TransportUserMessage.SESSION_NEW)
+
+    @inlineCallbacks
+    def test_post_inbound_message_close_session(self):
+        yield self.start_app_worker()
+        msg_d = self.app_helper.make_dispatch_inbound(
+            'in 1', message_id='1', conv=self.conversation,
+            session_event=TransportUserMessage.SESSION_CLOSE)
+
+        req = yield self.push_calls.get()
+        posted_json = req.content.read()
+        self.assertEqual(
+            req.requestHeaders.getRawHeaders('content-type'),
+            ['application/json; charset=utf-8'])
+        req.finish()
+        msg = yield msg_d
+
+        posted_msg = TransportUserMessage.from_json(posted_json)
+        self.assertEqual(posted_msg['message_id'], msg['message_id'])
+        self.assertEqual(
+            posted_msg['session_event'], TransportUserMessage.SESSION_CLOSE)
+
+    @inlineCallbacks
     def test_post_inbound_message_ignored(self):
         yield self.start_app_worker({
             'ignore_messages': True
