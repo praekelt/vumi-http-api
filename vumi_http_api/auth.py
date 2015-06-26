@@ -33,10 +33,9 @@ class ConversationAccessChecker(object):
         valid_tokens = [
             t for t in tokens if
             t['conversation'] == self.conversation_key]
-        if len(valid_tokens) > 0:
-            valid_tokens = valid_tokens[0]['tokens']
-            if token in valid_tokens:
-                return username
+        valid_tokens = sum((i['tokens'] for i in valid_tokens), [])
+        if token in valid_tokens:
+            return username
         raise error.UnauthorizedLogin()
 
 
