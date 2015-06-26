@@ -75,41 +75,16 @@ class TestVumiApiWorkerBase(VumiTestCase):
             "reason": reason,
         })
 
+    def _patch_http_request_full(self, exception_class):
+        from vumi_http_api import vumi_api
 
-class TestVumiApiWorker(TestVumiApiWorkerBase):
+        def raiser(*args, **kw):
+            raise exception_class()
+        self.patch(vumi_api, 'http_request_full', raiser)
 
-    @inlineCallbacks
-    def test_missing_auth(self):
-        yield self.start_app_worker()
-        url = '%s/%s/messages.json' % (self.url, self.conversation)
-        msg = {
-            'to_addr': '+2345',
-            'content': 'foo',
-            'message_id': 'evil_id',
-        }
-        response = yield http_request_full(url, json.dumps(msg), {},
-                                           method='PUT')
-        self.assertEqual(response.code, http.UNAUTHORIZED)
-        self.assertEqual(response.headers.getRawHeaders('www-authenticate'), [
-            'basic realm="Conversation Realm"'])
 
-    @inlineCallbacks
-    def test_invalid_auth(self):
-        yield self.start_app_worker()
-        url = '%s/%s/messages.json' % (self.url, self.conversation)
-        msg = {
-            'to_addr': '+2345',
-            'content': 'foo',
-            'message_id': 'evil_id',
-        }
-        auth_headers = {
-            'Authorization': ['Basic %s' % (base64.b64encode('foo:bar'),)],
-        }
-        response = yield http_request_full(url, json.dumps(msg), auth_headers,
-                                           method='PUT')
-        self.assertEqual(response.code, http.UNAUTHORIZED)
-        self.assertEqual(response.headers.getRawHeaders('www-authenticate'), [
-            'basic realm="Conversation Realm"'])
+
+class TestVumiApiWorkerSendToEndpoint(TestVumiApiWorkerBase):
 
     @inlineCallbacks
     def test_send_to(self):
@@ -233,6 +208,9 @@ class TestVumiApiWorker(TestVumiApiWorkerBase):
         self.assert_bad_request(
             response, "Invalid or missing value for payload key 'to_addr'")
 
+
+class TestVumiApiWorkerHealthEndpoint(TestVumiApiWorkerBase):
+
     @inlineCallbacks
     def test_health_response(self):
         yield self.start_app_worker()
@@ -241,6 +219,9 @@ class TestVumiApiWorker(TestVumiApiWorkerBase):
 
         response = yield http_request_full(health_url, method='GET')
         self.assertEqual(response.delivered_body, 'OK')
+
+
+class TestVumiApiWorkerPushMessages(TestVumiApiWorkerBase):
 
     @inlineCallbacks
     def test_post_inbound_message(self):
@@ -350,13 +331,6 @@ class TestVumiApiWorker(TestVumiApiWorkerBase):
             [url_not_configured_log] = lc.messages()
         self.assertTrue(self.conversation in url_not_configured_log)
 
-    def _patch_http_request_full(self, exception_class):
-        from vumi_http_api import vumi_api
-
-        def raiser(*args, **kw):
-            raise exception_class()
-        self.patch(vumi_api, 'http_request_full', raiser)
-
     @inlineCallbacks
     def test_post_inbound_message_unsupported_scheme(self):
         yield self.start_app_worker({
@@ -412,6 +386,8 @@ class TestVumiApiWorker(TestVumiApiWorkerBase):
                 'in 1', message_id='1', conv=self.conversation)
             [noconv_log] = lc.messages()
         self.assertTrue(msg['message_id'] in noconv_log)
+
+class TestVumiApiWorkerPushEvents(TestVumiApiWorkerBase):
 
     def make_outbound(self, conv, content, **kw):
         return self.app_helper.make_outbound(content, conv=conv, **kw)
@@ -570,7 +546,84 @@ class TestVumiApiWorker(TestVumiApiWorkerBase):
         self.assertTrue(self.mock_push_server.url in dns_log)
 
 
-class TestVumiApiWorkerWithAuth(TestVumiApiWorkerBase):
+class TestVumiApiWorkerEndpoints(TestVumiApiWorkerBase):
+
+    @inlineCallbacks
+    def test_bad_urls(self):
+        def assert_not_found(url, headers={}):
+            d = http_request_full(url, method='GET', headers=headers)
+            d.addCallback(lambda r: self.assertEqual(r.code, http.NOT_FOUND))
+            return d
+
+        yield self.start_app_worker()
+
+        yield assert_not_found(self.url)
+        yield assert_not_found(self.url + '/')
+        yield assert_not_found('%s/%s' % (self.url, self.conversation),
+                               headers=self.auth_headers)
+        yield assert_not_found('%s/%s/' % (self.url, self.conversation),
+                               headers=self.auth_headers)
+        yield assert_not_found('%s/%s/foo' % (self.url, self.conversation),
+                               headers=self.auth_headers)
+
+
+class TestVumiApiWorkerConcurrency(TestVumiApiWorkerBase):
+
+    @inlineCallbacks
+    def test_concurrency_limit(self):
+        yield self.start_app_worker({
+            'concurrency_limit': 0,
+        })
+        msg = {
+            'to_addr': '+2345',
+            'content': 'foo',
+            'message_id': 'evil_id',
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(url, json.dumps(msg),
+                                           self.auth_headers, method='PUT')
+
+        self.assertEqual(response.code, http.FORBIDDEN)
+        self.assertTrue(
+            "Too many concurrent connections" in response.delivered_body)
+
+    @inlineCallbacks
+    def test_no_concurrency_limit(self):
+        yield self.start_app_worker({
+            'concurrency_limit': -1,
+        })
+        msg = {
+            'to_addr': '+2345',
+            'content': 'foo',
+            'message_id': 'evil_id',
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(url, json.dumps(msg),
+                                           self.auth_headers, method='PUT')
+
+        self.assertEqual(response.code, http.OK)
+
+class TestVumiApiWorker(TestVumiApiWorkerBase):
+
+    @inlineCallbacks
+    def test_put_bad_json(self):
+        yield self.start_app_worker()
+        msg = '{'
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(
+            url, msg, self.auth_headers, method='PUT')
+
+        self.assertEqual(response.code, http.BAD_REQUEST)
+        resp = json.loads(response.delivered_body)
+        self.assertEqual(resp['reason'], 'Invalid Message')
+        self.assertEqual(resp['success'], False)
+
+
+class TestVumiApiWorkerAuth(TestVumiApiWorkerBase):
+
     @inlineCallbacks
     def test_push_with_basic_auth(self):
         def get_message_url():
@@ -618,69 +671,35 @@ class TestVumiApiWorkerWithAuth(TestVumiApiWorkerBase):
             header, 'Basic %s' % (base64.b64encode('username:')))
 
     @inlineCallbacks
-    def test_bad_urls(self):
-        def assert_not_found(url, headers={}):
-            d = http_request_full(url, method='GET', headers=headers)
-            d.addCallback(lambda r: self.assertEqual(r.code, http.NOT_FOUND))
-            return d
-
+    def test_missing_auth(self):
         yield self.start_app_worker()
-
-        yield assert_not_found(self.url)
-        yield assert_not_found(self.url + '/')
-        yield assert_not_found('%s/%s' % (self.url, self.conversation),
-                               headers=self.auth_headers)
-        yield assert_not_found('%s/%s/' % (self.url, self.conversation),
-                               headers=self.auth_headers)
-        yield assert_not_found('%s/%s/foo' % (self.url, self.conversation),
-                               headers=self.auth_headers)
-
-    @inlineCallbacks
-    def test_concurrency_limit(self):
-        yield self.start_app_worker({
-            'concurrency_limit': 0,
-        })
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
         msg = {
             'to_addr': '+2345',
             'content': 'foo',
             'message_id': 'evil_id',
         }
-
-        url = '%s/%s/messages.json' % (self.url, self.conversation)
-        response = yield http_request_full(url, json.dumps(msg),
-                                           self.auth_headers, method='PUT')
-
-        self.assertEqual(response.code, http.FORBIDDEN)
-        self.assertTrue(
-            "Too many concurrent connections" in response.delivered_body)
+        response = yield http_request_full(url, json.dumps(msg), {},
+                                           method='PUT')
+        self.assertEqual(response.code, http.UNAUTHORIZED)
+        self.assertEqual(response.headers.getRawHeaders('www-authenticate'), [
+            'basic realm="Conversation Realm"'])
 
     @inlineCallbacks
-    def test_no_concurrency_limit(self):
-        yield self.start_app_worker({
-            'concurrency_limit': -1,
-        })
+    def test_invalid_auth(self):
+        yield self.start_app_worker()
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
         msg = {
             'to_addr': '+2345',
             'content': 'foo',
             'message_id': 'evil_id',
         }
+        auth_headers = {
+            'Authorization': ['Basic %s' % (base64.b64encode('foo:bar'),)],
+        }
+        response = yield http_request_full(url, json.dumps(msg), auth_headers,
+                                           method='PUT')
+        self.assertEqual(response.code, http.UNAUTHORIZED)
+        self.assertEqual(response.headers.getRawHeaders('www-authenticate'), [
+            'basic realm="Conversation Realm"'])
 
-        url = '%s/%s/messages.json' % (self.url, self.conversation)
-        response = yield http_request_full(url, json.dumps(msg),
-                                           self.auth_headers, method='PUT')
-
-        self.assertEqual(response.code, http.OK)
-
-    @inlineCallbacks
-    def test_put_bad_json(self):
-        yield self.start_app_worker()
-        msg = '{'
-
-        url = '%s/%s/messages.json' % (self.url, self.conversation)
-        response = yield http_request_full(
-            url, msg, self.auth_headers, method='PUT')
-
-        self.assertEqual(response.code, http.BAD_REQUEST)
-        resp = json.loads(response.delivered_body)
-        self.assertEqual(resp['reason'], 'Invalid Message')
-        self.assertEqual(resp['success'], False)
