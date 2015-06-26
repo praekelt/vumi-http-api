@@ -11,12 +11,65 @@ from twisted.web import http
 from urlparse import urlparse, urlunparse
 
 from vumi.application.tests.helpers import ApplicationHelper
+from vumi.config import ConfigError
 from vumi.message import TransportEvent, TransportUserMessage
 from vumi.tests.helpers import VumiTestCase
 from vumi.tests.utils import LogCatcher, MockHttpServer
 from vumi.utils import http_request_full, HttpTimeoutError
 
 from vumi_http_api import VumiApiWorker
+from vumi_http_api.vumi_api import ConfigTokens
+
+class FakeModel(object):
+    def __init__(self, config):
+        self._config_data = config
+
+
+class TestConfigTokens(VumiTestCase):
+
+    def fake_model(self, *value, **kw):
+        config = kw.pop('config', {})
+        if value:
+            assert len(value) == 1
+            config['foo'] = value[0]
+        return FakeModel(config)
+
+    def assert_field_valid(self, field, *value, **kw):
+        field.validate(self.fake_model(*value, **kw))
+
+    def assert_field_invalid(self, field, *value, **kw):
+        self.assertRaises(ConfigError, field.validate,
+                          self.fake_model(*value, **kw))
+
+    def make_field(self, field_cls, **kw):
+        field = field_cls("desc", **kw)
+        field.setup('foo')
+        return field
+
+    def test_config_token_not_dict(self):
+        field = self.make_field(ConfigTokens)
+        self.assert_field_invalid(field, [[]])
+
+    def test_config_missing_key(self):
+        field = self.make_field(ConfigTokens)
+        self.assert_field_invalid(
+            field, [{'account': '', 'conversation': ''}])
+        self.assert_field_invalid(
+            field, [{'account': '', 'tokens': ''}])
+        self.assert_field_invalid(
+            field, [{'tokens': '', 'conversation': ''}])
+        self.assert_field_invalid(
+            field, [{}])
+
+    def test_config_token_tuple(self):
+        field = self.make_field(ConfigTokens)
+        self.assert_field_valid(
+            field, [{'account': '', 'conversation': '', 'tokens': ('a', 'b')}])
+
+    def test_config_token_not_list(self):
+        field = self.make_field(ConfigTokens)
+        self.assert_field_invalid(
+            field, [{'account': '', 'conversation': '', 'tokens': ''}])
 
 
 class TestVumiApiWorkerBase(VumiTestCase):
@@ -41,7 +94,11 @@ class TestVumiApiWorkerBase(VumiTestCase):
             'health_path': '/health/',
             'web_path': '/foo',
             'web_port': 0,
-            'api_tokens': ['token-1', 'token-2', 'token-3'],
+            'api_tokens': [{
+                'account': 'account_key',
+                'conversation': 'key_conversation',
+                'tokens': ['token-1', 'token-2', 'token-3'],
+            },]
         }
         self.config.update(config_overrides)
         self.app = yield self.app_helper.get_application(self.config)
@@ -51,7 +108,7 @@ class TestVumiApiWorkerBase(VumiTestCase):
             self.addr.host, self.addr.port, self.config['web_path'])
         self.auth_headers = {
             'Authorization': ['Basic ' + base64.b64encode('%s:%s' % (
-                self.conversation, 'token-1'))],
+                'account_key', 'token-1'))],
         }
 
     def get_message_url(self):
