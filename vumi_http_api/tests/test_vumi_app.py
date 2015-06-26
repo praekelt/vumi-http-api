@@ -635,7 +635,6 @@ class TestVumiApiWorkerWithAuth(TestVumiApiWorkerBase):
         yield assert_not_found('%s/%s/foo' % (self.url, self.conversation),
                                headers=self.auth_headers)
 
-
     @inlineCallbacks
     def test_concurrency_limit(self):
         yield self.start_app_worker({

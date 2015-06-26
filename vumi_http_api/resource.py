@@ -1,5 +1,4 @@
 import json
-import copy
 
 from twisted.internet.defer import Deferred, inlineCallbacks, returnValue
 from twisted.web.server import NOT_DONE_YET
@@ -147,7 +146,6 @@ class MessageResource(BaseResource):
             self.client_error_response(request, 'Invalid Message')
             return
 
-        in_reply_to = payload.get('in_reply_to')
         user_account = request.getUser()
         d = self.worker.concurrency_limiter.start(user_account)
         try:
