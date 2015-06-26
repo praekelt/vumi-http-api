@@ -49,7 +49,7 @@ class ConfigTokens(ConfigList):
                 token['tokens'] = list(token['tokens'])
             if not isinstance(token['tokens'], list):
                 self.raise_config_error(
-                    "token list %r is not a list" % token['tokens'])
+                    "token list in %r is not a list" % token)
         return deepcopy(value)
 
 
