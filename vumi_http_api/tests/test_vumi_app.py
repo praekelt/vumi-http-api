@@ -20,6 +20,7 @@ from vumi.utils import http_request_full, HttpTimeoutError
 from vumi_http_api import VumiApiWorker
 from vumi_http_api.vumi_api import ConfigTokens
 
+
 class FakeModel(object):
     def __init__(self, config):
         self._config_data = config
@@ -98,7 +99,7 @@ class TestVumiApiWorkerBase(VumiTestCase):
                 'account': 'account_key',
                 'conversation': 'key_conversation',
                 'tokens': ['token-1', 'token-2', 'token-3'],
-            },]
+            }, ]
         }
         self.config.update(config_overrides)
         self.app = yield self.app_helper.get_application(self.config)
