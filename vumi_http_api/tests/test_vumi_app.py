@@ -83,7 +83,6 @@ class TestVumiApiWorkerBase(VumiTestCase):
         self.patch(vumi_api, 'http_request_full', raiser)
 
 
-
 class TestVumiApiWorkerSendToEndpoint(TestVumiApiWorkerBase):
 
     @inlineCallbacks
@@ -387,6 +386,7 @@ class TestVumiApiWorkerPushMessages(TestVumiApiWorkerBase):
             [noconv_log] = lc.messages()
         self.assertTrue(msg['message_id'] in noconv_log)
 
+
 class TestVumiApiWorkerPushEvents(TestVumiApiWorkerBase):
 
     def make_outbound(self, conv, content, **kw):
@@ -605,6 +605,7 @@ class TestVumiApiWorkerConcurrency(TestVumiApiWorkerBase):
 
         self.assertEqual(response.code, http.OK)
 
+
 class TestVumiApiWorker(TestVumiApiWorkerBase):
 
     @inlineCallbacks
@@ -702,4 +703,3 @@ class TestVumiApiWorkerAuth(TestVumiApiWorkerBase):
         self.assertEqual(response.code, http.UNAUTHORIZED)
         self.assertEqual(response.headers.getRawHeaders('www-authenticate'), [
             'basic realm="Conversation Realm"'])
-
