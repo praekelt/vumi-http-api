@@ -1,5 +1,7 @@
 import base64
 
+from copy import deepcopy
+
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet.error import DNSLookupError, ConnectionRefusedError
 from twisted.web.error import SchemeNotSupported
@@ -16,6 +18,39 @@ from .auth import AuthorizedResource
 from .resource import ConversationResource
 from .utils import extract_auth_from_url
 from .concurrency_limiter import ConcurrencyLimitManager
+
+
+class ConfigTokens(ConfigList):
+    """A list of access tokens in the following format:
+
+    tokens:
+      -
+        account: key
+        conversation: conv_key
+        tokens: [token11, token12, token13]
+      -
+        account: key2
+        conversation: conv_key2
+        tokens: [token21, token22]
+    ...
+    """
+    field_type = 'list'
+
+    def clean(self, value):
+        value = super(ConfigTokens, self).clean(value)
+        for token in value:
+            if not isinstance(token, dict):
+                self.raise_config_error("item %r is not a dict." % token)
+            for key in ['account', 'conversation', 'tokens']:
+                if key not in token:
+                    self.raise_config_error(
+                        "item %r doesn't contain %s key." % (token, key))
+            if isinstance(token['tokens'], tuple):
+                token['tokens'] = list(token['tokens'])
+            if not isinstance(token['tokens'], list):
+                self.raise_config_error(
+                    "token list %r is not a list" % token['tokens'])
+        return deepcopy(value)
 
 
 class VumiApiWorkerConfig(ApplicationWorker.CONFIG_CLASS):
@@ -54,7 +89,7 @@ class VumiApiWorkerConfig(ApplicationWorker.CONFIG_CLASS):
         "requests instead of rejecting them.)",
         default=1, static=True)
     redis_manager = ConfigDict("Redis config.", required=True, static=True)
-    api_tokens = ConfigList(
+    api_tokens = ConfigTokens(
         "A list of valid authentication tokens.", required=True, static=True)
     content_length_limit = ConfigInt(
         'Optional content length limit. If set, messages with content longer'
