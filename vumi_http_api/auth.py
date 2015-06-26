@@ -29,8 +29,14 @@ class ConversationAccessChecker(object):
         username = credentials.username
         token = credentials.password
         tokens = self.worker.get_static_config().api_tokens
-        if token in tokens:
-            return username
+        valid_tokens = [t for t in tokens if t['account'] == username]
+        valid_tokens = [
+            t for t in tokens if
+            t['conversation'] == self.conversation_key]
+        if len(valid_tokens) > 0:
+            valid_tokens = valid_tokens[0]['tokens']
+            if token in valid_tokens:
+                return username
         raise error.UnauthorizedLogin()
 
 
