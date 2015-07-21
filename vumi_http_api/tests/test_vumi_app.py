@@ -201,6 +201,21 @@ class TestVumiApiWorkerSendToEndpoint(TestVumiApiWorkerBase):
         self.assertEqual(sent_msg['helper_metadata'], {})
 
     @inlineCallbacks
+    def test_send_to_invalid_helper_metadata(self):
+        yield self.start_app_worker()
+        msg = {
+            'to_addr': '+1234',
+            'helper_metadata': {'voice': 'err'},
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(
+            url, json.dumps(msg), self.auth_headers, method='PUT')
+        self.assert_bad_request(
+            response,
+            "Invalid or missing value for payload key 'voice'")
+
+    @inlineCallbacks
     def test_send_to_with_zero_worker_concurrency(self):
         """
         When the worker_concurrency_limit is set to zero, our requests will
