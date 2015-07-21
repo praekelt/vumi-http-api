@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="vumi-http-api",
-    version="0.1.1",
+    version="0.1.2a",
     url='http://github.com/praekelt/vumi-http-api',
     license='BSD',
     description="An HTTP API for interacting with vumi",
