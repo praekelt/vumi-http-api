@@ -149,7 +149,7 @@ class TestVumiApiWorkerSendToEndpoint(TestVumiApiWorkerBase):
         msg = {
             'to_addr': '+2345',
             'content': 'foo',
-            'helper_metadata': {'foo': 'bar'},
+            'helper_metadata': {'voice': {'foo': 'bar'}},
             'session_event': 'new',
             'message_id': 'evil_id',
         }
@@ -172,7 +172,48 @@ class TestVumiApiWorkerSendToEndpoint(TestVumiApiWorkerBase):
         self.assertEqual(sent_msg['to_addr'], msg['to_addr'])
         self.assertEqual(sent_msg['from_addr'], None)
         self.assertEqual(sent_msg['session_event'], 'new')
-        self.assertEqual(sent_msg['helper_metadata'], {'foo': 'bar'})
+        self.assertEqual(
+            sent_msg['helper_metadata'], {'voice': {'foo': 'bar'}})
+
+    @inlineCallbacks
+    def test_send_to_bad_helper_metadata(self):
+        yield self.start_app_worker()
+        msg = {
+            'to_addr': '+2345',
+            'helper_metadata': {'foo': 'bar'},
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(url, json.dumps(msg),
+                                           self.auth_headers, method='PUT')
+
+        self.assertEqual(response.code, http.OK)
+        self.assertEqual(
+            response.headers.getRawHeaders('content-type'),
+            ['application/json; charset=utf-8'])
+        put_msg = json.loads(response.delivered_body)
+
+        [sent_msg] = self.app_helper.get_dispatched_outbound()
+        self.assertEqual(sent_msg['to_addr'], sent_msg['to_addr'])
+        self.assertEqual(sent_msg['message_id'], put_msg['message_id'])
+        self.assertEqual(sent_msg['to_addr'], msg['to_addr'])
+        self.assertEqual(sent_msg['from_addr'], None)
+        self.assertEqual(sent_msg['helper_metadata'], {})
+
+    @inlineCallbacks
+    def test_send_to_invalid_helper_metadata(self):
+        yield self.start_app_worker()
+        msg = {
+            'to_addr': '+1234',
+            'helper_metadata': {'voice': 'err'},
+        }
+
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        response = yield http_request_full(
+            url, json.dumps(msg), self.auth_headers, method='PUT')
+        self.assert_bad_request(
+            response,
+            "Invalid or missing value for payload key 'voice'")
 
     @inlineCallbacks
     def test_send_to_with_zero_worker_concurrency(self):

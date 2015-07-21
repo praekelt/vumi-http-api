@@ -59,6 +59,15 @@ class MsgOptions(object):
                 self.errors.append(error)
 
     @property
+    def as_dict(self):
+        ret = {}
+        for field in self.WHITELIST:
+            value = getattr(self, field)
+            if value:
+                ret[field] = value
+        return ret
+
+    @property
     def is_valid(self):
         return not bool(self.errors)
 
@@ -104,6 +113,14 @@ class MsgCheckHelpers(object):
                 return "Payload content too long: %s > %s" % (
                     content_length, length_limit)
         return None
+
+
+class HelperMetadataOptions(MsgOptions):
+    """`helper_metadata` parameter for messages"""
+
+    WHITELIST = {
+        'voice': MsgCheckHelpers.is_dict_or_none,
+    }
 
 
 class SendToOptions(MsgOptions):
@@ -168,7 +185,15 @@ class MessageResource(BaseResource):
             self.client_error_response(request, msg_options.error_msg)
             return
 
-        helper_metadata = msg_options.helper_metadata or {}
+        helper_metadata_checker = HelperMetadataOptions(
+            msg_options.helper_metadata or {},
+            self.worker.get_static_config()._config_data)
+        if not helper_metadata_checker.is_valid:
+            self.client_error_response(
+                request, helper_metadata_checker.error_msg)
+            return
+
+        helper_metadata = helper_metadata_checker.as_dict
 
         msg = yield self.worker.send_to(
             msg_options.to_addr, msg_options.content,
