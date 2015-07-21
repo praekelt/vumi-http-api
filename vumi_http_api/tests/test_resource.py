@@ -95,6 +95,12 @@ class TestMsgCheckHelpers(TestCase):
         self.assertTrue(MsgCheckHelpers.is_unicode_or_none(None))
         self.assertFalse(MsgCheckHelpers.is_unicode("123"))
 
+    def test_is_dict_or_none(self):
+        self.assertTrue(MsgCheckHelpers.is_dict_or_none({}))
+        self.assertTrue(MsgCheckHelpers.is_dict_or_none({'foo': 'bar'}))
+        self.assertTrue(MsgCheckHelpers.is_dict_or_none(None))
+        self.assertFalse(MsgCheckHelpers.is_dict_or_none(u'123'))
+
     def test_is_session_event(self):
         for event in TransportUserMessage.SESSION_EVENTS:
             self.assertTrue(MsgCheckHelpers.is_session_event(event))

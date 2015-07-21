@@ -85,6 +85,10 @@ class MsgCheckHelpers(object):
     def is_session_event(value):
         return value in TransportUserMessage.SESSION_EVENTS
 
+    @staticmethod
+    def is_dict_or_none(value):
+        return (value is None) or (isinstance(value, dict))
+
     # The following checkers perform more complex validation based on the
     # entire payload and the API config.
 
@@ -108,6 +112,8 @@ class SendToOptions(MsgOptions):
     WHITELIST = {
         'content': MsgCheckHelpers.is_unicode_or_none,
         'to_addr': MsgCheckHelpers.is_unicode,
+        'helper_metadata': MsgCheckHelpers.is_dict_or_none,
+        'session_event': MsgCheckHelpers.is_session_event,
     }
 
     VALIDATION = (
