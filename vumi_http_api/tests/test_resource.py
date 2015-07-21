@@ -148,6 +148,22 @@ class TestSendToOptions(TestCase):
         self.assertFalse(SendToOptions({"to_addr": 123}, {}).is_valid)
         self.assertFalse(SendToOptions({"to_addr": None}, {}).is_valid)
 
+    def test_helper_metadata_whitelist(self):
+        self.assertTrue(SendToOptions(
+            {"to_addr": u"", "helper_metadata": {}}, {}).is_valid)
+        self.assertTrue(SendToOptions(
+            {"to_addr": u"", "helper_metadata": None}, {}).is_valid)
+        self.assertFalse(SendToOptions(
+            {"to_addr": u"", "helper_metadata": "str"}, {}).is_valid)
+
+    def test_session_event_whitelist(self):
+        self.assertTrue(SendToOptions(
+            {"to_addr": u"", "session_event": "new"}, {}).is_valid)
+        self.assertTrue(SendToOptions(
+            {"to_addr": u"", "session_event": None}, {}).is_valid)
+        self.assertFalse(SendToOptions(
+            {"to_addr": u"", "session_event": "bar"}, {}).is_valid)
+
     def test_white_listing(self):
         opts = SendToOptions({"bad": 5, "to_addr": u"dummy"}, {})
         self.assertTrue(opts.is_valid)
