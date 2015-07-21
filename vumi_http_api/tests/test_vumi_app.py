@@ -149,6 +149,8 @@ class TestVumiApiWorkerSendToEndpoint(TestVumiApiWorkerBase):
         msg = {
             'to_addr': '+2345',
             'content': 'foo',
+            'helper_metadata': {'foo': 'bar'},
+            'session_event': 'new',
             'message_id': 'evil_id',
         }
 
@@ -169,6 +171,8 @@ class TestVumiApiWorkerSendToEndpoint(TestVumiApiWorkerBase):
         self.assertEqual(sent_msg['message_id'], put_msg['message_id'])
         self.assertEqual(sent_msg['to_addr'], msg['to_addr'])
         self.assertEqual(sent_msg['from_addr'], None)
+        self.assertEqual(sent_msg['session_event'], 'new')
+        self.assertEqual(sent_msg['helper_metadata'], {'foo': 'bar'})
 
     @inlineCallbacks
     def test_send_to_with_zero_worker_concurrency(self):

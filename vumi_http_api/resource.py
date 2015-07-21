@@ -168,11 +168,12 @@ class MessageResource(BaseResource):
             self.client_error_response(request, msg_options.error_msg)
             return
 
-        helper_metadata = {}
+        helper_metadata = msg_options.helper_metadata or {}
 
         msg = yield self.worker.send_to(
             msg_options.to_addr, msg_options.content,
-            endpoint='default', helper_metadata=helper_metadata)
+            endpoint='default', session_event=msg_options.session_event,
+            helper_metadata=helper_metadata)
 
         self.successful_send_response(request, msg)
 
