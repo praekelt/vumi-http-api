@@ -806,3 +806,21 @@ class TestVumiApiWorkerAuth(TestVumiApiWorkerBase):
         self.assertEqual(response.code, http.UNAUTHORIZED)
         self.assertEqual(response.headers.getRawHeaders('www-authenticate'), [
             'basic realm="Conversation Realm"'])
+
+    @inlineCallbacks
+    def test_invalid_username_valid_token(self):
+        yield self.start_app_worker()
+        url = '%s/%s/messages.json' % (self.url, self.conversation)
+        msg = {
+            'to_addr': '+2345',
+            'content': 'foo',
+            'message_id': 'evil_id',
+        }
+        auth_headers = {
+            'Authorization': ['Basic %s' % (base64.b64encode('foo:token-1'),)],
+        }
+        response = yield http_request_full(url, json.dumps(msg), auth_headers,
+                                           method='PUT')
+        self.assertEqual(response.code, http.UNAUTHORIZED)
+        self.assertEqual(response.headers.getRawHeaders('www-authenticate'), [
+            'basic realm="Conversation Realm"'])

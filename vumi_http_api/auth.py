@@ -1,3 +1,5 @@
+import itertools
+
 from zope.interface import implements
 
 from twisted.cred import portal, checkers, credentials, error
@@ -29,11 +31,14 @@ class ConversationAccessChecker(object):
         username = credentials.username
         token = credentials.password
         tokens = self.worker.get_static_config().api_tokens
-        valid_tokens = [t for t in tokens if t['account'] == username]
         valid_tokens = [
-            t for t in tokens if
-            t['conversation'] == self.conversation_key]
-        valid_tokens = sum((i['tokens'] for i in valid_tokens), [])
+            t['tokens'] for t in tokens
+            if (
+                t['account'] == username and
+                t['conversation'] == self.conversation_key
+            )
+        ]
+        valid_tokens = list(itertools.chain(*valid_tokens))
         if token in valid_tokens:
             return username
         raise error.UnauthorizedLogin()
